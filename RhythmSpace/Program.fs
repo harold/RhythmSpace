@@ -78,7 +78,15 @@ let redraw (args:PaintEventArgs) =
         for x = 0 to 15 do
             rendersquare g x y (strips.[y].isOn(x))
 
+let click (args:MouseEventArgs) =
+    let x = args.X/32
+    let y = args.Y/32
+    let s = strips.[y]
+    s.set(x, not (s.isOn(x)))
+    f.Invalidate()
+
 f.Paint.Add(redraw)
+f.MouseClick.Add(click)
 
 [<EntryPoint>]
 let main argv = 
