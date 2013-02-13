@@ -1,12 +1,34 @@
 ﻿open System.Windows.Forms
 open System.Drawing
 
+type StripBinding = {
+    up:string
+    down:string
+    numerator:int
+    denominator:int
+}
+
+let stripbindings = [| 
+    { up="B0"; down="A1";      numerator=14; denominator=2 };
+    { up="C1"; down="ASharp1"; numerator=15; denominator=3 };
+    { up="CSharp1"; down="B1"; numerator=16; denominator=4 };
+    { up="D1"; down="C2";      numerator=17; denominator=5 };
+|]
+
 type Strip() =
-    let numerator = 0
-    let denominator = 1
+    let numerator = ref 0
+    let denominator = ref 1
+    let number = ref 1
     let data = new System.Collections.BitArray(16)
     member this.isOn(i) = data.[i]
     member this.set(i,v) = data.Set(i,v)
+    // TODO: These would be cleaner as properties.
+    member this.getNumber() = !number
+    member this.setNumber(i) = number := i
+    member this.getNumerator() = !numerator
+    member this.setNumerator(i) = numerator := i
+    member this.getDenominator() = !denominator
+    member this.setDenominator(i) = denominator := i
 
 let strips = Array.init 4 (fun i -> new Strip())
 strips.[0].set(0, true)
@@ -22,6 +44,28 @@ strips.[2].set(14, true)
 
 let outputDevice = Seq.find (fun (device:Midi.OutputDevice) -> device.Name.Contains("LoopBe")) Midi.OutputDevice.InstalledDevices
 outputDevice.Open()
+
+let inputDevice  = Seq.find (fun (device:Midi.InputDevice) -> device.Name.Contains("nanoKONTROL")) Midi.InputDevice.InstalledDevices
+inputDevice.Open()
+inputDevice.StartReceiving(null)
+inputDevice.add_ControlChange( fun msg -> for i = 0 to 3 do
+                                              let sb = stripbindings.[i]
+                                              let s = strips.[i]
+                                              if sb.denominator = (int msg.Control) then
+                                                s.setDenominator(1+msg.Value/4)
+                                              if sb.numerator = (int msg.Control) then
+                                                s.setNumerator(int ((float32 msg.Value)/127.f * (float32 (s.getDenominator())))) )
+
+inputDevice.add_NoteOn( fun msg -> for i = 0 to 3 do
+                                       let sb = stripbindings.[i]
+                                       let s = strips.[i]
+                                       let id = (msg.Pitch.ToString())
+                                       if sb.up = id then
+                                           if s.getNumber() < 16 then s.setNumber(s.getNumber()+1)
+                                       if sb.down = id then
+                                           if s.getNumber() > 0 then s.setNumber(s.getNumber()-1)
+                                   printfn "%A" (strips.[0].getNumber()) )
+
 let clock = new Midi.Clock(130.f)
 
 let list = ref (new System.Collections.Generic.List<Midi.Message>())
@@ -94,5 +138,6 @@ let main argv =
     clock.Start()
     Application.Run(f)
     clock.Stop()
+    inputDevice.Close()
     outputDevice.Close()
     0 // return an integer exit code
