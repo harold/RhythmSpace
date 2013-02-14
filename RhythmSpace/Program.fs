@@ -1,6 +1,16 @@
 ﻿open System.Windows.Forms
 open System.Drawing
 
+type MyForm() as self =
+  inherit Form()
+  do
+    self.SetStyle(ControlStyles.DoubleBuffer ||| ControlStyles.UserPaint ||| ControlStyles.AllPaintingInWmPaint, true)
+    self.UpdateStyles()
+    self.FormBorderStyle <- FormBorderStyle.Fixed3D
+    self.ClientSize <- new Size(32*16,32*4)
+
+let f = new MyForm(Text="Rhythm Space")
+
 type StripBinding = {
     up:string
     down:string
@@ -24,11 +34,20 @@ type Strip() =
     member this.set(i,v) = data.Set(i,v)
     // TODO: These would be cleaner as properties.
     member this.getNumber() = !number
-    member this.setNumber(i) = number := i
+    member this.setNumber(i) = number := i; this.update()
     member this.getNumerator() = !numerator
-    member this.setNumerator(i) = numerator := i
+    member this.setNumerator(i) = numerator := i; this.update()
     member this.getDenominator() = !denominator
-    member this.setDenominator(i) = denominator := i
+    member this.setDenominator(i) = denominator := i; this.update()
+    member this.update() =
+        if !numerator > !denominator then numerator := !denominator
+        let pattern = (!Patterns.patterns).[!number]
+        let l = (float (pattern.Count-1))
+        let p = (float !numerator)/(float !denominator)
+        let index = int (round (p*l))
+        for i = 0 to 15 do
+            this.set( i, Patterns.powers.[i]&&&pattern.[index] > 0 )
+        f.Invalidate()
 
 let strips = Array.init 4 (fun i -> new Strip())
 strips.[0].set(0, true)
@@ -95,16 +114,6 @@ let callback = new Midi.CallbackMessage( deligate, 0.f )
 list := (new System.Collections.Generic.List<Midi.Message>())
 (!list).Add( callback )
 clock.Schedule(!list,0.f)
-
-type MyForm() as self =
-  inherit Form()
-  do
-    self.SetStyle(ControlStyles.DoubleBuffer ||| ControlStyles.UserPaint ||| ControlStyles.AllPaintingInWmPaint, true)
-    self.UpdateStyles()
-    self.FormBorderStyle <- FormBorderStyle.Fixed3D
-    self.ClientSize <- new Size(32*16,32*4)
-
-let f = new MyForm(Text="Rhythm Space")
 
 let rendersquare (g:Graphics) x y value =
     let rowcolor = match y with
