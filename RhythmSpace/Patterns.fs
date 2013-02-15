@@ -2,7 +2,6 @@
 
 // Here's the first thing I thought of.
 type intlist = System.Collections.Generic.List<int>
-type patternmap = System.Collections.Generic.Dictionary<int,intlist>
 let patterns = ref Map.empty<int,intlist>
 for i = 0 to 16 do patterns := Map.add i (new intlist()) !patterns
 

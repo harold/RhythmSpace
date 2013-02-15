@@ -138,15 +138,60 @@ let click (args:MouseEventArgs) =
     s.set(x, not (s.isOn(x)))
     f.Invalidate()
 
+let trackXmlHelper (xml:System.Xml.XmlTextWriter) index note =
+    xml.WriteStartElement("TrackColumn")
+    xml.WriteStartElement("TrackColumn")
+    xml.WriteStartElement("Lines")
+    for l = 0 to 15 do
+        xml.WriteStartElement("Line")
+        xml.WriteAttributeString("index", l.ToString())
+        if strips.[index].isOn(l) then
+            xml.WriteStartElement("NoteColumns")
+            xml.WriteStartElement("NoteColumn")
+            xml.WriteElementString("Note",note)
+            xml.WriteElementString("Instrument","00")
+            xml.WriteElementString("Volume","..")
+            xml.WriteElementString("Panning","..")
+            xml.WriteElementString("Delay","..")
+            xml.WriteEndElement()//NoteColumn
+            xml.WriteEndElement()//NoteColumns
+        xml.WriteEndElement()//Line
+    xml.WriteEndElement()//Lines
+    xml.WriteElementString("ColumnType","NoteColumn")
+    xml.WriteEndElement()//TrackColumn
+    xml.WriteEndElement()//TrackColumn
+
+let key (args:KeyEventArgs) =
+    if args.Control && args.KeyCode = Keys.C then
+        let s = new System.IO.StringWriter()
+        let xml = new System.Xml.XmlTextWriter(s)
+        xml.Formatting <- System.Xml.Formatting.Indented
+        xml.WriteStartDocument()
+        xml.WriteStartElement("PatternClipboard.BlockBuffer")
+        xml.WriteAttributeString("doc_version","0")
+        xml.WriteStartElement("TrackColumns")
+        trackXmlHelper xml 0 "C-4"
+        xml.WriteStartElement("TrackColumn")
+        xml.WriteStartElement("TrackColumn")
+        xml.WriteElementString("ColumnType","EffectColumn")
+        xml.WriteEndElement()//TrackColumn
+        xml.WriteEndElement()//TrackColumn
+        trackXmlHelper xml 1 "D-4"
+        trackXmlHelper xml 2 "E-4"
+        trackXmlHelper xml 3 "F-4"
+        xml.WriteEndElement()//TrackColumns
+        xml.WriteEndElement()//PatternClipboard.BlockBuffer
+        System.Windows.Forms.Clipboard.SetText(s.ToString())
+
 f.Paint.Add(redraw)
 f.MouseClick.Add(click)
+f.KeyDown.Add(key)
 
-[<EntryPoint>]
-let main argv = 
-    printfn "%A" argv
+[<System.STAThread>]
+do
     clock.Start()
     Application.Run(f)
     clock.Stop()
     inputDevice.Close()
     outputDevice.Close()
-    0 // return an integer exit code
+
