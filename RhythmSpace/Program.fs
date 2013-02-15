@@ -2,12 +2,13 @@
 open System.Drawing
 
 type MyForm() as self =
-  inherit Form()
+  inherit Form(KeyPreview=true)
   do
     self.SetStyle(ControlStyles.DoubleBuffer ||| ControlStyles.UserPaint ||| ControlStyles.AllPaintingInWmPaint, true)
     self.UpdateStyles()
     self.FormBorderStyle <- FormBorderStyle.Fixed3D
-    self.ClientSize <- new Size(32*16,32*4)
+    self.AutoSizeMode <- AutoSizeMode.GrowAndShrink
+    self.AutoSize <- true
 
 let f = new MyForm(Text="Rhythm Space")
 
@@ -25,14 +26,17 @@ let stripbindings = [|
     { up="D1"; down="C2";      numerator=17; denominator=5 };
 |]
 
-type Strip() =
+type Strip(color) =
+    let dirty = new Event<_>()
+    let color = ref color
     let numerator = ref 0
     let denominator = ref 1
     let number = ref 1
     let data = new System.Collections.BitArray(16)
+    member this.onDirty = dirty.Publish
+    member this.getColor() = !color
     member this.isOn(i) = data.[i]
     member this.set(i,v) = data.Set(i,v)
-    // TODO: These would be cleaner as properties.
     member this.getNumber() = !number
     member this.setNumber(i) = number := i; this.update()
     member this.getNumerator() = !numerator
@@ -47,9 +51,26 @@ type Strip() =
         let index = int (round (p*l))
         for i = 0 to 15 do
             this.set( i, Patterns.powers.[i]&&&pattern.[index] > 0 )
-        f.Invalidate()
+        dirty.Trigger()
 
-let strips = Array.init 4 (fun i -> new Strip())
+type StripControl( strip:Strip ) as this =
+    inherit Control(Size=new Size(32*16,32), Margin=Padding.Empty)
+    do
+        this.DoubleBuffered <- true
+        strip.onDirty.Add (fun () -> this.Invalidate())
+    override this.OnPaint(args:PaintEventArgs) =
+        let g = args.Graphics
+        for i = 0 to 15 do
+            let color = if (strip.isOn(i)) then (strip.getColor()) else Color.FromArgb(32,32,32)
+            g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),i*32,0,32,32)
+            g.FillRectangle(new SolidBrush(color),i*32+1,1,32-1,32-1)
+
+let strips = Array.init 4 (fun i -> new Strip( match i with
+                                               | 0 -> Color.DarkCyan
+                                               | 1 -> Color.DarkMagenta
+                                               | 2 -> Color.DarkGoldenrod
+                                               | _ -> Color.White ))
+
 strips.[0].set(0, true)
 strips.[0].set(10, true)
 
@@ -60,6 +81,14 @@ strips.[2].set(2, true)
 strips.[2].set(6, true)
 strips.[2].set(8, true)
 strips.[2].set(14, true)
+
+let flow = new FlowLayoutPanel(FlowDirection=FlowDirection.TopDown, Margin=Padding.Empty, AutoSize=true)
+
+flow.Controls.Add( new StripControl(strips.[0]) )
+flow.Controls.Add( new StripControl(strips.[1]) )
+flow.Controls.Add( new StripControl(strips.[2]) )
+flow.Controls.Add( new StripControl(strips.[3]) )
+f.Controls.Add flow
 
 let outputDevice = Seq.find (fun (device:Midi.OutputDevice) -> device.Name.Contains("LoopBe")) Midi.OutputDevice.InstalledDevices
 outputDevice.Open()
@@ -82,8 +111,7 @@ inputDevice.add_NoteOn( fun msg -> for i = 0 to 3 do
                                        if sb.up = id then
                                            if s.getNumber() < 16 then s.setNumber(s.getNumber()+1)
                                        if sb.down = id then
-                                           if s.getNumber() > 0 then s.setNumber(s.getNumber()-1)
-                                   printfn "%A" (strips.[0].getNumber()) )
+                                           if s.getNumber() > 0 then s.setNumber(s.getNumber()-1) )
 
 let clock = new Midi.Clock(130.f)
 
@@ -102,41 +130,16 @@ let callbackHandler time =
                 | 1 -> Midi.Pitch.D3
                 | 2 -> Midi.Pitch.E3
                 | 3 -> Midi.Pitch.F3
-                | _ -> Midi.Pitch.C3
+                | _ -> Midi.Pitch.C0
         for x = 0 to 15 do
             if strips.[y].isOn(x) then note p (0.25f * (float32 x))
     clock.Schedule( !list, t )
 
 let deligate = (new Midi.CallbackMessage.CallbackType(callbackHandler))
-
 let callback = new Midi.CallbackMessage( deligate, 0.f )
 
-list := (new System.Collections.Generic.List<Midi.Message>())
 (!list).Add( callback )
 clock.Schedule(!list,0.f)
-
-let rendersquare (g:Graphics) x y value =
-    let rowcolor = match y with
-                   | 0 -> Color.DarkCyan
-                   | 1 -> Color.DarkMagenta
-                   | 2 -> Color.DarkGoldenrod
-                   | _ -> Color.White
-    let c = if value then rowcolor else Color.FromArgb(32,32,32)
-    g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),x*32,y*32,32,32)
-    g.FillRectangle(new SolidBrush(c),x*32+1,y*32+1,32-1,32-1)
-
-let redraw (args:PaintEventArgs) =
-    let g = args.Graphics
-    for y = 0 to 3 do
-        for x = 0 to 15 do
-            rendersquare g x y (strips.[y].isOn(x))
-
-let click (args:MouseEventArgs) =
-    let x = args.X/32
-    let y = args.Y/32
-    let s = strips.[y]
-    s.set(x, not (s.isOn(x)))
-    f.Invalidate()
 
 let trackXmlHelper (xml:System.Xml.XmlTextWriter) index note =
     xml.WriteStartElement("TrackColumn")
@@ -164,8 +167,7 @@ let trackXmlHelper (xml:System.Xml.XmlTextWriter) index note =
 let key (args:KeyEventArgs) =
     if args.Control && args.KeyCode = Keys.C then
         let s = new System.IO.StringWriter()
-        let xml = new System.Xml.XmlTextWriter(s)
-        xml.Formatting <- System.Xml.Formatting.Indented
+        let xml = new System.Xml.XmlTextWriter(s, Formatting=System.Xml.Formatting.Indented)
         xml.WriteStartDocument()
         xml.WriteStartElement("PatternClipboard.BlockBuffer")
         xml.WriteAttributeString("doc_version","0")
@@ -183,8 +185,6 @@ let key (args:KeyEventArgs) =
         xml.WriteEndElement()//PatternClipboard.BlockBuffer
         System.Windows.Forms.Clipboard.SetText(s.ToString())
 
-f.Paint.Add(redraw)
-f.MouseClick.Add(click)
 f.KeyDown.Add(key)
 
 [<System.STAThread>]
