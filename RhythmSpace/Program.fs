@@ -53,7 +53,7 @@ type Strip(color) =
             this.set( i, Patterns.powers.[i]&&&pattern.[index] > 0 )
         dirty.Trigger()
 
-type StripControl( strip:Strip ) as this =
+type SixteenGridControl( strip:Strip ) as this =
     inherit Control(Size=new Size(32*16,32), Margin=Padding.Empty)
     do
         this.DoubleBuffered <- true
@@ -64,6 +64,25 @@ type StripControl( strip:Strip ) as this =
             let color = if (strip.isOn(i)) then (strip.getColor()) else Color.FromArgb(32,32,32)
             g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),i*32,0,32,32)
             g.FillRectangle(new SolidBrush(color),i*32+1,1,32-1,32-1)
+
+type StripDataControl( strip:Strip ) as this = 
+    inherit Control(Size=new Size(100,32), Margin=Padding.Empty)
+    do
+        this.DoubleBuffered <- true
+        strip.onDirty.Add (fun () -> this.Invalidate())
+    override this.OnPaint(args:PaintEventArgs) =
+        let g = args.Graphics
+        g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),0,0,100,32)
+        g.FillRectangle(new SolidBrush(Color.FromArgb(24,24,24)),1,1,100,32)
+        g.DrawString(sprintf "%A/%A" (strip.getNumerator()) (strip.getDenominator()),new Font("Segoe UI",9.f),new SolidBrush(Color.White),0.f,0.f)
+
+type StripControl( strip:Strip ) as this =
+    inherit FlowLayoutPanel(AutoSize=true, Margin=Padding.Empty)
+    let data = new StripDataControl( strip )
+    let grid = new SixteenGridControl( strip )
+    do
+        this.Controls.Add data
+        this.Controls.Add grid
 
 let strips = Array.init 4 (fun i -> new Strip( match i with
                                                | 0 -> Color.DarkCyan
