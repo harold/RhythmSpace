@@ -12,77 +12,29 @@ type MyForm() as self =
 
 let f = new MyForm(Text="Rhythm Space")
 
-type StripBinding = {
-    up:string
-    down:string
-    numerator:int
-    denominator:int
-}
-
-let stripbindings = [| 
-    { up="B0"; down="A1";      numerator=14; denominator=2 };
-    { up="C1"; down="ASharp1"; numerator=15; denominator=3 };
-    { up="CSharp1"; down="B1"; numerator=16; denominator=4 };
-    { up="D1"; down="C2";      numerator=17; denominator=5 };
-|]
-
 type Strip(color) =
     let dirty = new Event<_>()
     let color = ref color
-    let numerator = ref 0
-    let denominator = ref 1
-    let number = ref 1
-    let data = new System.Collections.BitArray(16)
+    let data = ref (new System.Collections.BitArray(16))
     member this.onDirty = dirty.Publish
     member this.getColor() = !color
-    member this.isOn(i) = data.[i]
-    member this.set(i,v) = data.Set(i,v)
-    member this.getNumber() = !number
-    member this.setNumber(i) = number := i; this.update()
-    member this.getNumerator() = !numerator
-    member this.setNumerator(i) = numerator := i; this.update()
-    member this.getDenominator() = !denominator
-    member this.setDenominator(i) = denominator := i; this.update()
-    member this.update() =
-        if !numerator > !denominator then numerator := !denominator
-        let pattern = (!Patterns.patterns).[!number]
-        let l = (float (pattern.Count-1))
-        let p = (float !numerator)/(float !denominator)
-        let index = int (round (p*l))
-        for i = 0 to 15 do
-            this.set( i, Patterns.powers.[i]&&&pattern.[index] > 0 )
+    member this.isOn(i) = (!data).[i]
+    member this.set(i,v) = (!data).Set(i,v); dirty.Trigger()
+    member this.setNumber(n) =
+        let i = ref 0
+        let added = ref 0
+        (!data).SetAll(false)
+        while !i < 16 do
+            this.set(!i,true)
+            added := !added+1
+            if !added = n then i:=16 else i := (!i+(int (floor (16.f/(float32 n)))))
         dirty.Trigger()
-
-type SixteenGridControl( strip:Strip ) as this =
-    inherit Control(Size=new Size(32*16,32), Margin=Padding.Empty)
-    do
-        this.DoubleBuffered <- true
-        strip.onDirty.Add (fun () -> this.Invalidate())
-    override this.OnPaint(args:PaintEventArgs) =
-        let g = args.Graphics
+    member this.translate n =
+        let newArray = new System.Collections.BitArray(16)
         for i = 0 to 15 do
-            let color = if (strip.isOn(i)) then (strip.getColor()) else Color.FromArgb(32,32,32)
-            g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),i*32,0,32,32)
-            g.FillRectangle(new SolidBrush(color),i*32+1,1,32-1,32-1)
-
-type StripDataControl( strip:Strip ) as this = 
-    inherit Control(Size=new Size(100,32), Margin=Padding.Empty)
-    do
-        this.DoubleBuffered <- true
-        strip.onDirty.Add (fun () -> this.Invalidate())
-    override this.OnPaint(args:PaintEventArgs) =
-        let g = args.Graphics
-        g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),0,0,100,32)
-        g.FillRectangle(new SolidBrush(Color.FromArgb(24,24,24)),1,1,100,32)
-        g.DrawString(sprintf "%A/%A" (strip.getNumerator()) (strip.getDenominator()),new Font("Segoe UI",9.f),new SolidBrush(Color.White),0.f,0.f)
-
-type StripControl( strip:Strip ) as this =
-    inherit FlowLayoutPanel(AutoSize=true, Margin=Padding.Empty)
-    let data = new StripDataControl( strip )
-    let grid = new SixteenGridControl( strip )
-    do
-        this.Controls.Add data
-        this.Controls.Add grid
+            newArray.Set( i, (!data).Get(((i+16)+n)%16) )
+        data := newArray
+        dirty.Trigger()
 
 let strips = Array.init 4 (fun i -> new Strip( match i with
                                                | 0 -> Color.DarkCyan
@@ -101,36 +53,58 @@ strips.[2].set(6, true)
 strips.[2].set(8, true)
 strips.[2].set(14, true)
 
+type SixteenGridControl( strip:Strip ) as this =
+    inherit Control(Size=new Size(32*16,32), Margin=Padding.Empty)
+    do
+        this.DoubleBuffered <- true
+        strip.onDirty.Add (fun () -> this.Invalidate())
+        this.TabStop <- false
+    override this.OnPaint(args:PaintEventArgs) =
+        let g = args.Graphics
+        for i = 0 to 15 do
+            let color = if (strip.isOn(i)) then (strip.getColor()) else Color.FromArgb(32,32,32)
+            g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),i*32,0,32,32)
+            g.FillRectangle(new SolidBrush(color),i*32+1,1,32-1,32-1)
+
+type StripDataControl( strip:Strip ) as this = 
+    inherit Control(Size=new Size(100,32), Margin=Padding.Empty)
+    do
+        this.DoubleBuffered <- true
+        strip.onDirty.Add (fun () -> this.Invalidate())
+        this.GotFocus.Add (fun e -> this.Invalidate())
+        this.LostFocus.Add (fun e -> this.Invalidate())
+    override this.OnPaint(args:PaintEventArgs) =
+        let g = args.Graphics
+        let borderColor = if this.Focused then Color.FromArgb(192,192,84) else Color.FromArgb(48,48,48)
+        g.FillRectangle(new SolidBrush(borderColor),0,0,100,32)
+        g.FillRectangle(new SolidBrush(Color.FromArgb(24,24,24)),1,1,98,30)
+        g.DrawString(sprintf "OHAI",new Font("Segoe UI",9.f),new SolidBrush(Color.White),0.f,0.f)
+    override this.ProcessCmdKey( msg, keys:Keys )=
+        match keys with
+        | Keys.Left -> strip.translate 1; true
+        | Keys.Right -> strip.translate -1; true
+        | Keys.Up | Keys.Down -> true
+        | _ -> false
+    member this.setNumber n = strip.setNumber n
+
+type StripFlow( strip:Strip ) as this =
+    inherit FlowLayoutPanel(AutoSize=true, Margin=Padding.Empty)
+    let data = new StripDataControl( strip )
+    let grid = new SixteenGridControl( strip )
+    do
+        this.Controls.Add data
+        this.Controls.Add grid
+
 let flow = new FlowLayoutPanel(FlowDirection=FlowDirection.TopDown, Margin=Padding.Empty, AutoSize=true)
 
-flow.Controls.Add( new StripControl(strips.[0]) )
-flow.Controls.Add( new StripControl(strips.[1]) )
-flow.Controls.Add( new StripControl(strips.[2]) )
-flow.Controls.Add( new StripControl(strips.[3]) )
+flow.Controls.Add( new StripFlow(strips.[0]) )
+flow.Controls.Add( new StripFlow(strips.[1]) )
+flow.Controls.Add( new StripFlow(strips.[2]) )
+flow.Controls.Add( new StripFlow(strips.[3]) )
 f.Controls.Add flow
 
 let outputDevice = Seq.find (fun (device:Midi.OutputDevice) -> device.Name.Contains("LoopBe")) Midi.OutputDevice.InstalledDevices
 outputDevice.Open()
-
-let inputDevice  = Seq.find (fun (device:Midi.InputDevice) -> device.Name.Contains("nanoKONTROL")) Midi.InputDevice.InstalledDevices
-inputDevice.Open()
-inputDevice.StartReceiving(null)
-inputDevice.add_ControlChange( fun msg -> for i = 0 to 3 do
-                                              let sb = stripbindings.[i]
-                                              let s = strips.[i]
-                                              if sb.denominator = (int msg.Control) then
-                                                s.setDenominator(1+msg.Value/4)
-                                              if sb.numerator = (int msg.Control) then
-                                                s.setNumerator(int ((float32 msg.Value)/127.f * (float32 (s.getDenominator())))) )
-
-inputDevice.add_NoteOn( fun msg -> for i = 0 to 3 do
-                                       let sb = stripbindings.[i]
-                                       let s = strips.[i]
-                                       let id = (msg.Pitch.ToString())
-                                       if sb.up = id then
-                                           if s.getNumber() < 16 then s.setNumber(s.getNumber()+1)
-                                       if sb.down = id then
-                                           if s.getNumber() > 0 then s.setNumber(s.getNumber()-1) )
 
 let clock = new Midi.Clock(130.f)
 
@@ -183,7 +157,19 @@ let trackXmlHelper (xml:System.Xml.XmlTextWriter) index note =
     xml.WriteEndElement()//TrackColumn
     xml.WriteEndElement()//TrackColumn
 
+let setFocusedStripNumber n =
+    let control = f.ActiveControl :?> StripDataControl
+    control.setNumber n
+
 let key (args:KeyEventArgs) =
+    if args.KeyCode = Keys.D1 then setFocusedStripNumber(1)
+    if args.KeyCode = Keys.D2 then setFocusedStripNumber(2)
+    if args.KeyCode = Keys.D3 then setFocusedStripNumber(3)
+    if args.KeyCode = Keys.D4 then setFocusedStripNumber(4)
+    if args.KeyCode = Keys.D5 then setFocusedStripNumber(5)
+    if args.KeyCode = Keys.D6 then setFocusedStripNumber(6)
+    if args.KeyCode = Keys.D7 then setFocusedStripNumber(7)
+    if args.KeyCode = Keys.D8 then setFocusedStripNumber(8)
     if args.Control && args.KeyCode = Keys.C then
         let s = new System.IO.StringWriter()
         let xml = new System.Xml.XmlTextWriter(s, Formatting=System.Xml.Formatting.Indented)
@@ -211,6 +197,5 @@ do
     clock.Start()
     Application.Run(f)
     clock.Stop()
-    inputDevice.Close()
     outputDevice.Close()
 
