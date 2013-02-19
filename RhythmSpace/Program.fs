@@ -35,6 +35,27 @@ type Strip(color) =
             newArray.Set( i, (!data).Get(((i+16)+n)%16) )
         data := newArray
         dirty.Trigger()
+    member this.perturb =
+        let r = new System.Random()
+        let indices = new Patterns.intlist()
+        for i = 0 to 15 do if this.isOn(i) then indices.Add(i)
+        let l = indices.Count
+        let stillTrying = ref true
+        while !stillTrying && indices.Count>0 do
+            let index = r.Next(indices.Count)
+            let v = indices.[index]
+            indices.RemoveAt(index)
+            let left  = ((v+16)-1)%16
+            let right = ((v+16)+1)%16
+            if 0 = r.Next(2) then
+                if not (this.isOn(left)) then
+                    this.set(v, false)
+                    this.set(left, true)
+                    stillTrying := false
+            else if not (this.isOn(right)) then
+                this.set(v, false)
+                this.set(right, true)
+                stillTrying := false
 
 let strips = Array.init 4 (fun i -> new Strip( match i with
                                                | 0 -> Color.DarkCyan
@@ -83,7 +104,8 @@ type StripDataControl( strip:Strip ) as this =
         match keys with
         | Keys.Left -> strip.translate 1; true
         | Keys.Right -> strip.translate -1; true
-        | Keys.Up | Keys.Down -> true
+        | Keys.Up -> strip.perturb; true
+        | Keys.Down -> true
         | _ -> false
     member this.setNumber n = strip.setNumber n
 
