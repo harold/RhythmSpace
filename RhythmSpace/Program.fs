@@ -24,10 +24,11 @@ type Strip(color) =
         let i = ref 0
         let added = ref 0
         (!data).SetAll(false)
-        while !i < 16 do
-            this.set(!i,true)
-            added := !added+1
-            if !added = n then i:=16 else i := (!i+(int (floor (16.f/(float32 n)))))
+        if n>0 then
+            while !i < 16 do
+                this.set(!i,true)
+                added := !added+1
+                if !added = n then i:=16 else i := (!i+(int (floor (16.f/(float32 n)))))
         dirty.Trigger()
     member this.translate n =
         let newArray = new System.Collections.BitArray(16)
@@ -192,6 +193,7 @@ let key (args:KeyEventArgs) =
     if args.KeyCode = Keys.D6 then setFocusedStripNumber(6)
     if args.KeyCode = Keys.D7 then setFocusedStripNumber(7)
     if args.KeyCode = Keys.D8 then setFocusedStripNumber(8)
+    if args.KeyCode = Keys.D0 then setFocusedStripNumber(0)
     if args.Control && args.KeyCode = Keys.C then
         let s = new System.IO.StringWriter()
         let xml = new System.Xml.XmlTextWriter(s, Formatting=System.Xml.Formatting.Indented)
