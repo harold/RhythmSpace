@@ -16,6 +16,7 @@ type Strip(color) =
     let dirty = new Event<_>()
     let color = ref color
     let data = ref (new System.Collections.BitArray(16))
+    let beatStrength = ref 0
     member this.onDirty = dirty.Publish
     member this.getColor() = !color
     member this.isOn(i) = (!data).[i]
@@ -57,6 +58,16 @@ type Strip(color) =
                 this.set(v, false)
                 this.set(right, true)
                 stillTrying := false
+    member this.incBeatStrength() =
+        if !beatStrength < 15 then
+            beatStrength := !beatStrength + 1
+            data := new System.Collections.BitArray( (Patterns.byBeatStrength.[!beatStrength]) )
+            dirty.Trigger()
+    member this.decBeatStrength() =
+        if !beatStrength > 0 then
+            beatStrength := !beatStrength - 1
+            data := new System.Collections.BitArray( (Patterns.byBeatStrength.[!beatStrength]) )
+            dirty.Trigger()
 
 let strips = Array.init 4 (fun i -> new Strip( match i with
                                                | 0 -> Color.DarkCyan
@@ -107,6 +118,8 @@ type StripDataControl( strip:Strip ) as this =
         | Keys.Right -> strip.translate -1; true
         | Keys.Up -> strip.perturb; true
         | Keys.Down -> true
+        | Keys.Add -> strip.incBeatStrength(); true
+        | Keys.Subtract -> strip.decBeatStrength(); true
         | _ -> false
     member this.setNumber n = strip.setNumber n
 
