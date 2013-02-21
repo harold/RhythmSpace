@@ -231,6 +231,7 @@ f.KeyDown.Add(key)
 
 [<System.STAThread>]
 do
+    OSC.repl()
     clock.Start()
     Application.Run(f)
     clock.Stop()
