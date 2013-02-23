@@ -11,12 +11,15 @@ type MyForm() as self =
     self.AutoSize <- true
 
 let f = new MyForm(Text="Rhythm Space")
+let u = OSC.UDPConnection(8000)
 
-type Strip(color) =
+type Strip(color, trackNumber, note, instrument) as this =
     let dirty = new Event<_>()
     let color = ref color
     let data = ref (new System.Collections.BitArray(16))
     let beatStrength = ref 0
+    do
+        dirty.Publish.Add (fun () -> this.send())
     member this.onDirty = dirty.Publish
     member this.getColor() = !color
     member this.isOn(i) = (!data).[i]
@@ -68,12 +71,20 @@ type Strip(color) =
             beatStrength := !beatStrength - 1
             data := new System.Collections.BitArray( (Patterns.byBeatStrength.[!beatStrength]) )
             dirty.Trigger()
+    member this.send() =
+        let linesTable = System.Text.StringBuilder("{")
+        for i = 0 to 15 do 
+            if this.isOn(i) then
+                linesTable.Append((i+1).ToString()+",") |> ignore
+        linesTable.Append("}") |> ignore
+        let code = Renoise.code trackNumber (linesTable.ToString()) note instrument
+        u.SendMessage (OSC.Str("/renoise/evaluate"), [OSC.Str(code)])
+        
 
-let strips = Array.init 4 (fun i -> new Strip( match i with
-                                               | 0 -> Color.DarkCyan
-                                               | 1 -> Color.DarkMagenta
-                                               | 2 -> Color.DarkGoldenrod
-                                               | _ -> Color.White ))
+let strips = [| new Strip(Color.DarkCyan,      "2", "48", "0");
+                new Strip(Color.DarkMagenta,   "4", "50", "0");
+                new Strip(Color.DarkGoldenrod, "5", "52", "0");
+                new Strip(Color.White,         "6", "53", "0"); |]
 
 strips.[0].set(0, true)
 strips.[0].set(10, true)
@@ -139,60 +150,6 @@ flow.Controls.Add( new StripFlow(strips.[2]) )
 flow.Controls.Add( new StripFlow(strips.[3]) )
 f.Controls.Add flow
 
-let outputDevice = Seq.find (fun (device:Midi.OutputDevice) -> device.Name.Contains("LoopBe")) Midi.OutputDevice.InstalledDevices
-outputDevice.Open()
-
-let clock = new Midi.Clock(130.f)
-
-let list = ref (new System.Collections.Generic.List<Midi.Message>())
-
-let note pitch time =
-    (!list).Add(new Midi.NoteOnMessage(outputDevice,Midi.Channel.Channel1,pitch,127,time))
-    (!list).Add(new Midi.NoteOffMessage(outputDevice,Midi.Channel.Channel1,pitch,127,time+1.f))
-
-let callbackHandler time =
-    let t = time + 4.f
-    (!list).RemoveRange(1,(!list).Count-1)
-    for y = 0 to 3 do
-        let p = match y with
-                | 0 -> Midi.Pitch.C3
-                | 1 -> Midi.Pitch.D3
-                | 2 -> Midi.Pitch.E3
-                | 3 -> Midi.Pitch.F3
-                | _ -> Midi.Pitch.C0
-        for x = 0 to 15 do
-            if strips.[y].isOn(x) then note p (0.25f * (float32 x))
-    clock.Schedule( !list, t )
-
-let deligate = (new Midi.CallbackMessage.CallbackType(callbackHandler))
-let callback = new Midi.CallbackMessage( deligate, 0.f )
-
-(!list).Add( callback )
-clock.Schedule(!list,0.f)
-
-let trackXmlHelper (xml:System.Xml.XmlTextWriter) index note =
-    xml.WriteStartElement("TrackColumn")
-    xml.WriteStartElement("TrackColumn")
-    xml.WriteStartElement("Lines")
-    for l = 0 to 15 do
-        xml.WriteStartElement("Line")
-        xml.WriteAttributeString("index", l.ToString())
-        if strips.[index].isOn(l) then
-            xml.WriteStartElement("NoteColumns")
-            xml.WriteStartElement("NoteColumn")
-            xml.WriteElementString("Note",note)
-            xml.WriteElementString("Instrument","00")
-            xml.WriteElementString("Volume","..")
-            xml.WriteElementString("Panning","..")
-            xml.WriteElementString("Delay","..")
-            xml.WriteEndElement()//NoteColumn
-            xml.WriteEndElement()//NoteColumns
-        xml.WriteEndElement()//Line
-    xml.WriteEndElement()//Lines
-    xml.WriteElementString("ColumnType","NoteColumn")
-    xml.WriteEndElement()//TrackColumn
-    xml.WriteEndElement()//TrackColumn
-
 let setFocusedStripNumber n =
     let control = f.ActiveControl :?> StripDataControl
     control.setNumber n
@@ -207,33 +164,10 @@ let key (args:KeyEventArgs) =
     if args.KeyCode = Keys.D7 then setFocusedStripNumber(7)
     if args.KeyCode = Keys.D8 then setFocusedStripNumber(8)
     if args.KeyCode = Keys.D0 then setFocusedStripNumber(0)
-    if args.Control && args.KeyCode = Keys.C then
-        let s = new System.IO.StringWriter()
-        let xml = new System.Xml.XmlTextWriter(s, Formatting=System.Xml.Formatting.Indented)
-        xml.WriteStartDocument()
-        xml.WriteStartElement("PatternClipboard.BlockBuffer")
-        xml.WriteAttributeString("doc_version","0")
-        xml.WriteStartElement("TrackColumns")
-        trackXmlHelper xml 0 "C-4"
-        xml.WriteStartElement("TrackColumn")
-        xml.WriteStartElement("TrackColumn")
-        xml.WriteElementString("ColumnType","EffectColumn")
-        xml.WriteEndElement()//TrackColumn
-        xml.WriteEndElement()//TrackColumn
-        trackXmlHelper xml 1 "D-4"
-        trackXmlHelper xml 2 "E-4"
-        trackXmlHelper xml 3 "F-4"
-        xml.WriteEndElement()//TrackColumns
-        xml.WriteEndElement()//PatternClipboard.BlockBuffer
-        System.Windows.Forms.Clipboard.SetText(s.ToString())
 
 f.KeyDown.Add(key)
 
 [<System.STAThread>]
 do
-    OSC.repl()
-    clock.Start()
     Application.Run(f)
-    clock.Stop()
-    outputDevice.Close()
 

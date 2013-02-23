@@ -7,7 +7,7 @@ type Data =
     | Str of string
     | Blob of byte []
 
-type Message = (Data * Data list)
+type Message = (Data * Data list) // Address paired with arguments
 
 let stringToByteArray (s:string) = System.Text.Encoding.UTF8.GetBytes s
 
@@ -30,7 +30,7 @@ let dataToByteArray (d:Data) =
     | Timetag t -> Array.append (getIntBytes(fst t)) (getIntBytes(snd t))
     | F32 f -> getFloatBytes f
     | Str s -> stringToByteArray (stringToOSCString s)
-    | Blob b -> b
+    | Blob b -> b // TODO: Maybe a bug here with padding?
 
 let dataToTypeTag (d:Data) =
     match d with
@@ -63,11 +63,17 @@ let stringToMessage (s:string) =
     let arguments = List.init (a.Length-1) (fun i -> stringToData (a.[i+1]))
     (Str(a.[0]), arguments)
 
-let repl() =
+type UDPConnection( port ) =
     let socket = new System.Net.Sockets.UdpClient()
-    socket.Connect("localhost",54321)
-    while true do
-        let bytes = messageToBytes (stringToMessage (System.Console.ReadLine()))
+    do
+        socket.Connect("localhost",port)
+    member this.SendMessage m =
+        let bytes = messageToBytes m
         socket.Send( bytes, bytes.Length ) |> ignore
         //let reply = socket.Receive( ref (socket.Client.RemoteEndPoint :?> System.Net.IPEndPoint) )
         //printfn "%A" (System.Text.Encoding.UTF8.GetString( reply ))
+    
+//let repl() =
+//    let u = new UDPConnection( 8000 )
+//    while true do
+//        u.SendMessage (stringToMessage (System.Console.ReadLine()))
