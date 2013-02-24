@@ -22,6 +22,9 @@ type Strip(color, trackNumber, note, instrument) as this =
         dirty.Publish.Add (fun () -> this.send())
     member this.onDirty = dirty.Publish
     member this.getColor() = !color
+    member this.getTrack() = trackNumber
+    member this.getNote() = note
+    member this.getInstrument() = instrument
     member this.isOn(i) = (!data).[i]
     member this.set(i,v) = (!data).Set(i,v); dirty.Trigger()
     member this.setNumber(n) =
@@ -83,8 +86,7 @@ type Strip(color, trackNumber, note, instrument) as this =
 
 let strips = [| new Strip(Color.DarkCyan,      "2", "48", "0");
                 new Strip(Color.DarkMagenta,   "4", "50", "0");
-                new Strip(Color.DarkGoldenrod, "5", "52", "0");
-                new Strip(Color.White,         "6", "53", "0"); |]
+                new Strip(Color.DarkGoldenrod, "5", "52", "0"); |]
 
 strips.[0].set(0, true)
 strips.[0].set(10, true)
@@ -97,21 +99,25 @@ strips.[2].set(6, true)
 strips.[2].set(8, true)
 strips.[2].set(14, true)
 
+let boxSize = 48
 type SixteenGridControl( strip:Strip ) as this =
-    inherit Control(Size=new Size(32*16,32), Margin=Padding.Empty)
+    inherit Control(Size=new Size(boxSize*16,boxSize), Margin=Padding.Empty)
     do
+        this.TabStop <- false
         this.DoubleBuffered <- true
         strip.onDirty.Add (fun () -> this.Invalidate())
-        this.TabStop <- false
     override this.OnPaint(args:PaintEventArgs) =
         let g = args.Graphics
         for i = 0 to 15 do
             let color = if (strip.isOn(i)) then (strip.getColor()) else Color.FromArgb(32,32,32)
-            g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),i*32,0,32,32)
-            g.FillRectangle(new SolidBrush(color),i*32+1,1,32-1,32-1)
+            g.FillRectangle(new SolidBrush(Color.FromArgb(48,48,48)),i*boxSize,0,boxSize,boxSize)
+            g.FillRectangle(new SolidBrush(color),i*boxSize+1,1,boxSize-1,boxSize-1)
+    override this.OnMouseDown(args:MouseEventArgs) =
+        let i = (args.X/boxSize)
+        strip.set( i, not (strip.isOn(i)) )
 
 type StripDataControl( strip:Strip ) as this = 
-    inherit Control(Size=new Size(100,32), Margin=Padding.Empty)
+    inherit Control(Size=new Size(100,boxSize), Margin=Padding.Empty)
     do
         this.DoubleBuffered <- true
         strip.onDirty.Add (fun () -> this.Invalidate())
@@ -120,11 +126,22 @@ type StripDataControl( strip:Strip ) as this =
     override this.OnPaint(args:PaintEventArgs) =
         let g = args.Graphics
         let borderColor = if this.Focused then Color.FromArgb(192,192,84) else Color.FromArgb(48,48,48)
-        g.FillRectangle(new SolidBrush(borderColor),0,0,100,32)
-        g.FillRectangle(new SolidBrush(Color.FromArgb(24,24,24)),1,1,98,30)
-        g.DrawString(sprintf "OHAI",new Font("Segoe UI",9.f),new SolidBrush(Color.White),0.f,0.f)
+        g.FillRectangle(new SolidBrush(borderColor),0,0,100,boxSize)
+        g.FillRectangle(new SolidBrush(Color.FromArgb(24,24,24)),1,1,98,boxSize-2)
+        g.DrawString(sprintf "Track: %i" (System.Int32.Parse(strip.getTrack())),new Font("Segoe UI",9.f),new SolidBrush(Color.White),0.f,0.f)
+        g.DrawString(sprintf "Note: %i" (System.Int32.Parse(strip.getNote())),new Font("Segoe UI",9.f),new SolidBrush(Color.White),0.f,15.f)
+        g.DrawString(sprintf "Inst: %i" (System.Int32.Parse(strip.getInstrument())),new Font("Segoe UI",9.f),new SolidBrush(Color.White),1.f,30.f)
     override this.ProcessCmdKey( msg, keys:Keys )=
         match keys with
+        | Keys.D1 -> strip.setNumber 1; true
+        | Keys.D2 -> strip.setNumber 2; true
+        | Keys.D3 -> strip.setNumber 3; true
+        | Keys.D4 -> strip.setNumber 4; true
+        | Keys.D5 -> strip.setNumber 5; true
+        | Keys.D6 -> strip.setNumber 6; true
+        | Keys.D7 -> strip.setNumber 7; true
+        | Keys.D8 -> strip.setNumber 8; true
+        | Keys.D0 -> strip.setNumber 0; true
         | Keys.Left -> strip.translate 1; true
         | Keys.Right -> strip.translate -1; true
         | Keys.Up -> strip.perturb; true
@@ -132,40 +149,16 @@ type StripDataControl( strip:Strip ) as this =
         | Keys.Add -> strip.incBeatStrength(); true
         | Keys.Subtract -> strip.decBeatStrength(); true
         | _ -> false
-    member this.setNumber n = strip.setNumber n
 
 type StripFlow( strip:Strip ) as this =
     inherit FlowLayoutPanel(AutoSize=true, Margin=Padding.Empty)
-    let data = new StripDataControl( strip )
-    let grid = new SixteenGridControl( strip )
     do
-        this.Controls.Add data
-        this.Controls.Add grid
+        this.Controls.Add (new StripDataControl( strip ))
+        this.Controls.Add (new SixteenGridControl( strip ))
 
 let flow = new FlowLayoutPanel(FlowDirection=FlowDirection.TopDown, Margin=Padding.Empty, AutoSize=true)
-
-flow.Controls.Add( new StripFlow(strips.[0]) )
-flow.Controls.Add( new StripFlow(strips.[1]) )
-flow.Controls.Add( new StripFlow(strips.[2]) )
-flow.Controls.Add( new StripFlow(strips.[3]) )
+Seq.iter (fun strip -> flow.Controls.Add( new StripFlow(strip) )) strips
 f.Controls.Add flow
-
-let setFocusedStripNumber n =
-    let control = f.ActiveControl :?> StripDataControl
-    control.setNumber n
-
-let key (args:KeyEventArgs) =
-    if args.KeyCode = Keys.D1 then setFocusedStripNumber(1)
-    if args.KeyCode = Keys.D2 then setFocusedStripNumber(2)
-    if args.KeyCode = Keys.D3 then setFocusedStripNumber(3)
-    if args.KeyCode = Keys.D4 then setFocusedStripNumber(4)
-    if args.KeyCode = Keys.D5 then setFocusedStripNumber(5)
-    if args.KeyCode = Keys.D6 then setFocusedStripNumber(6)
-    if args.KeyCode = Keys.D7 then setFocusedStripNumber(7)
-    if args.KeyCode = Keys.D8 then setFocusedStripNumber(8)
-    if args.KeyCode = Keys.D0 then setFocusedStripNumber(0)
-
-f.KeyDown.Add(key)
 
 [<System.STAThread>]
 do
