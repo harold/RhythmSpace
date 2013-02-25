@@ -52,6 +52,9 @@
     <Compile Include="Patterns.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
+    <Content Include="headphones.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>

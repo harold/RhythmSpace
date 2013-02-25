@@ -9,6 +9,7 @@ type MyForm() as self =
     self.FormBorderStyle <- FormBorderStyle.Fixed3D
     self.AutoSizeMode <- AutoSizeMode.GrowAndShrink
     self.AutoSize <- true
+    self.Icon <- new Icon("./headphones.ico")
 
 let f = new MyForm(Text="Rhythm Space")
 let u = OSC.UDPConnection(8000)
@@ -150,17 +151,20 @@ type StripDataControl( strip:Strip ) as this =
         | Keys.Subtract -> strip.decBeatStrength(); true
         | _ -> false
 
-type StripFlow( strip:Strip ) as this =
-    inherit FlowLayoutPanel(AutoSize=true, Margin=Padding.Empty)
-    do
-        this.Controls.Add (new StripDataControl( strip ))
-        this.Controls.Add (new SixteenGridControl( strip ))
+let table = new TableLayoutPanel(Margin=Padding.Empty, AutoSize=true)
+let addStripToTable i strip =
+    let stripData = new StripDataControl( strip )
+    table.Controls.Add (stripData)
+    table.SetRow(stripData, i)
+    table.SetColumn(stripData, 0)
+    let sixteenGrid = new SixteenGridControl( strip )
+    table.Controls.Add (sixteenGrid)
+    table.SetRow(sixteenGrid, i)
+    table.SetColumn(sixteenGrid, 1)
 
-let flow = new FlowLayoutPanel(FlowDirection=FlowDirection.TopDown, Margin=Padding.Empty, AutoSize=true)
-Seq.iter (fun strip -> flow.Controls.Add( new StripFlow(strip) )) strips
-f.Controls.Add flow
+Seq.iteri (fun i strip -> addStripToTable i strip ) strips
+f.Controls.Add table
 
 [<System.STAThread>]
 do
     Application.Run(f)
-
