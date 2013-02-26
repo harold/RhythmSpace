@@ -28,6 +28,7 @@ type Strip(color, trackNumber, note, instrument) as this =
     member this.getInstrument() = instrument
     member this.isOn(i) = (!data).[i]
     member this.set(i,v) = (!data).Set(i,v); dirty.Trigger()
+    member this.setall( newdata ) = data := newdata; dirty.Trigger()
     member this.setNumber(n) =
         let i = ref 0
         let added = ref 0
@@ -117,6 +118,16 @@ type SixteenGridControl( strip:Strip ) as this =
         let i = (args.X/boxSize)
         strip.set( i, not (strip.isOn(i)) )
 
+let swap i delta =
+    let a = strips.[i]
+    let b = strips.[(i+strips.Length+delta)%strips.Length]
+    let atemp = new System.Collections.BitArray(16)
+    let btemp = new System.Collections.BitArray(16)
+    for i=0 to 15 do atemp.Set( i, a.isOn(i) )
+    for i=0 to 15 do btemp.Set( i, b.isOn(i) )
+    a.setall( btemp )
+    b.setall( atemp )
+
 type StripDataControl( strip:Strip ) as this = 
     inherit Control(Size=new Size(100,boxSize), Margin=Padding.Empty)
     do
@@ -132,7 +143,7 @@ type StripDataControl( strip:Strip ) as this =
         g.DrawString(sprintf "Track: %i" (System.Int32.Parse(strip.getTrack())),new Font("Segoe UI",9.f),new SolidBrush(Color.White),0.f,0.f)
         g.DrawString(sprintf "Note: %i" (System.Int32.Parse(strip.getNote())),new Font("Segoe UI",9.f),new SolidBrush(Color.White),0.f,15.f)
         g.DrawString(sprintf "Inst: %i" (System.Int32.Parse(strip.getInstrument())),new Font("Segoe UI",9.f),new SolidBrush(Color.White),1.f,30.f)
-    override this.ProcessCmdKey( msg, keys:Keys )=
+    override this.ProcessCmdKey( msg, keys:Keys ) =
         match keys with
         | Keys.D1 -> strip.setNumber 1; true
         | Keys.D2 -> strip.setNumber 2; true
@@ -143,13 +154,19 @@ type StripDataControl( strip:Strip ) as this =
         | Keys.D7 -> strip.setNumber 7; true
         | Keys.D8 -> strip.setNumber 8; true
         | Keys.D0 -> strip.setNumber 0; true
-        | Keys.Left -> strip.translate 1; true
-        | Keys.Right -> strip.translate -1; true
         | Keys.Up -> strip.perturb; true
         | Keys.Down -> true
+        | Keys.Left -> strip.translate 1; true
+        | Keys.Right -> strip.translate -1; true
         | Keys.Add -> strip.incBeatStrength(); true
         | Keys.Subtract -> strip.decBeatStrength(); true
         | _ -> false
+    override this.OnKeyDown( args:KeyEventArgs ) =
+        if args.Control then
+            match args.KeyCode with
+            | Keys.Up   -> swap (Seq.findIndex (fun s -> s=strip) strips) -1; args.Handled <- true
+            | Keys.Down -> swap (Seq.findIndex (fun s -> s=strip) strips)  1; args.Handled <- true
+            | _ -> ()
 
 let table = new TableLayoutPanel(Margin=Padding.Empty, AutoSize=true)
 let addStripToTable i strip =
