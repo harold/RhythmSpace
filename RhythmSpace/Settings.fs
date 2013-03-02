@@ -18,6 +18,10 @@ let save (strips:Strip[]) =
         xml.WriteAttributeString("track", s.getTrack().ToString())
         xml.WriteAttributeString("note", s.getNote().ToString())
         xml.WriteAttributeString("instrument", s.getInstrument().ToString())
+        let pattern = new System.Text.StringBuilder()
+        for i=0 to 15 do
+            pattern.Append(if s.isOn(i) then "x" else ".") |> ignore
+        xml.WriteAttributeString("pattern", pattern.ToString())
         xml.WriteEndElement()//strip
     xml.WriteEndElement()//strips
     xml.WriteEndElement()//rhythmspace.settings
@@ -25,6 +29,10 @@ let save (strips:Strip[]) =
     f.Write( s.ToString() )
     f.Flush()
     f.Close()
+
+let getAttr (node:System.Xml.XmlNode) name defaultValue =
+    let attr = node.Attributes.GetNamedItem(name)
+    if attr<>null then attr.Value else defaultValue
 
 let parseInt i = System.Int32.Parse(i)
 
@@ -34,10 +42,16 @@ let load osc =
     let strips = xml.GetElementsByTagName("strip")
     Array.init (strips.Count) (fun i -> 
         let strip = strips.[i]
-        let colorAttr = strip.Attributes.GetNamedItem("color")
-        let trackAttr = strip.Attributes.GetNamedItem("track")
-        let noteAttr = strip.Attributes.GetNamedItem("note")
-        let instrumentAttr = strip.Attributes.GetNamedItem("instrument")
-        let colorArray = colorAttr.Value.Split([|' '|])
-        let c = System.Drawing.Color.FromArgb(parseInt colorArray.[3],parseInt colorArray.[0],parseInt colorArray.[1],parseInt colorArray.[2])
-        new Strip(osc, c, parseInt trackAttr.Value, parseInt noteAttr.Value, parseInt instrumentAttr.Value))
+        let color = getAttr strip "color" "255 255 255 255"
+        let ca = color.Split([|' '|])
+        let c = System.Drawing.Color.FromArgb(parseInt ca.[3],parseInt ca.[0],parseInt ca.[1],parseInt ca.[2])
+        let track = getAttr strip "track" "1"
+        let note = getAttr strip "note" "48"
+        let instrument = getAttr strip "instrument" "0"
+        let pattern = getAttr strip "pattern" "................"
+        let p = new System.Collections.BitArray(16)
+        for i=0 to 15 do
+            if pattern.Chars i = 'x' then p.Set(i, true)
+        let s = new Strip(osc, c, parseInt track, parseInt note, parseInt instrument)
+        s.setall( p )
+        s)
